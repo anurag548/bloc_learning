@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:bloc/bloc.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:math' as math show Random;
+
+import 'package:flutter_bloc_learning/orderList.dart';
 
 enum URLs { ORDER_LIST, url2 }
 
@@ -22,6 +27,19 @@ extension UrlString on URLs {
 abstract class LoadAction {
   const LoadAction();
 }
+
+@immutable
+class LoadPersonsAction implements LoadAction {
+  final URLs url;
+  const LoadPersonsAction({required this.url}) : super();
+}
+
+Future<Iterable<OrderList>> getOrder(String url) => HttpClient()
+    .getUrl(Uri.parse(url))
+    .then((req) => req.close())
+    .then((res) => res.transform(utf8.decoder).join())
+    .then((resstr) => jsonDecode(resstr) as List<dynamic>)
+    .then((list) => list.map((e) => OrderList.fromJson(e)));
 
 void main() {
   runApp(const MyApp());
@@ -74,7 +92,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    late final Bloc bloc;
+    // late final Bloc bloc;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
