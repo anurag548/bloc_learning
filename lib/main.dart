@@ -29,9 +29,13 @@ abstract class LoadAction {
 }
 
 @immutable
-class LoadPersonsAction implements LoadAction {
+class LoadURLsAction implements LoadAction {
   final URLs url;
-  const LoadPersonsAction({required this.url}) : super();
+  const LoadURLsAction({required this.url}) : super();
+}
+
+extension Subscript<T> on Iterable<T> {
+  T? operator [](int index) => length > index ? elementAt(index) : null;
 }
 
 Future<Iterable<OrderList>> getOrder(String url) => HttpClient()
@@ -40,6 +44,44 @@ Future<Iterable<OrderList>> getOrder(String url) => HttpClient()
     .then((res) => res.transform(utf8.decoder).join())
     .then((resstr) => jsonDecode(resstr) as List<dynamic>)
     .then((list) => list.map((e) => OrderList.fromJson(e)));
+
+@immutable
+class FetchResult {
+  final Iterable<OrderList> orderList;
+  final bool isRetrivedFromCache;
+  const FetchResult(
+      {required this.orderList, this.isRetrivedFromCache = false});
+
+  @override
+  String toString() {
+    // TODO: implement toString
+    return 'FetchResult{orderList: $orderList, isRetrivedFromCache: $isRetrivedFromCache}';
+  }
+}
+
+class APIbloc extends Bloc<LoadAction, FetchResult?> {
+  final Map<URLs, Iterable<OrderList>> _cache = {};
+  APIbloc() : super(null) {
+    on<LoadURLsAction>((event, emit) async {
+      final url = event.url;
+      if (_cache.containsKey(url)) {
+        final cachedOrders = _cache[url]!;
+        final result = FetchResult(
+          orderList: cachedOrders,
+          isRetrivedFromCache: true,
+        );
+        emit(result);
+      } else {
+        final res = await getOrder(url.urlString);
+        _cache[url] = res;
+        final result = FetchResult(
+          orderList: res,
+          isRetrivedFromCache: false,
+        );
+      }
+    });
+  }
+}
 
 void main() {
   runApp(const MyApp());
@@ -55,7 +97,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: BlocProvider(
+        create: (_) => APIbloc(),
+        child: const MyHomePage(title: 'Flutter Demo Home Page'),
+      ),
     );
   }
 }
@@ -94,52 +139,91 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     // late final Bloc bloc;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            // Padding(
-            //   padding: const EdgeInsets.all(8.0),
-            //   child:
-            //   StreamBuilder<String?>(
-            //       stream: cubit.stream,
-            //       builder: (context, snapshot) {
-            //         switch (snapshot.connectionState) {
-            //           case ConnectionState.none:
-            //           case ConnectionState.waiting:
-            //             return const Padding(
-            //               padding: EdgeInsets.all(8.0),
-            //               child: CircularProgressIndicator(),
-            //             );
-            //           case ConnectionState.active:
-            //             return Text('${snapshot.data}');
-            //           default:
-            //             return Text(
-            //               snapshot.data ?? '',
-            //               style: Theme.of(context).textTheme.headline4,
-            //             );
-            //         }
-
-            //         // return Text(
-            //         //   '${snapshot.data}',
-            //         //   style: Theme.of(context).textTheme.headline4,
-            //         // );
-            //       }),
-            // ),
-          ],
+        appBar: AppBar(
+          title: Text(widget.title),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-    );
+        body: Column(
+          children: [
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () {
+                    context
+                        .read<APIbloc>()
+                        .add(LoadURLsAction(url: URLs.ORDER_LIST));
+                  },
+                  child: Text('Load link 1 '),
+                ),
+                TextButton(
+                  onPressed: () {
+                    context
+                        .read<APIbloc>()
+                        .add(LoadURLsAction(url: URLs.ORDER_LIST));
+                  },
+                  child: Text('Load link 1 '),
+                ),
+              ],
+            ),
+            BlocBuilder<APIbloc, FetchResult?>(buildWhen: (previous, current) {
+              return previous?.orderList != current?.orderList;
+            }, builder: (context, state) {
+              final res = state?.orderList;
+              if (res == null) {
+                return SizedBox();
+              }
+              return Expanded(
+                child: ListView.builder(
+                  itemCount: res.length,
+                  itemBuilder: (context, index) {
+                    final orders = res[index];
+                    return ListTile(
+                      title: Text(orders!.orderNumber),
+                    );
+                  },
+                ),
+              );
+            })
+          ],
+        )
+        // Center(
+        //   child: Column(
+        //     mainAxisAlignment: MainAxisAlignment.center,
+        //     children: <Widget>[
+        //       const Text(
+        //         'You have pushed the button this many times:',
+        //       ),
+        //       // Padding(
+        //       //   padding: const EdgeInsets.all(8.0),
+        //       //   child:
+        //       //   StreamBuilder<String?>(
+        //       //       stream: cubit.stream,
+        //       //       builder: (context, snapshot) {
+        //       //         switch (snapshot.connectionState) {
+        //       //           case ConnectionState.none:
+        //       //           case ConnectionState.waiting:
+        //       //             return const Padding(
+        //       //               padding: EdgeInsets.all(8.0),
+        //       //               child: CircularProgressIndicator(),
+        //       //             );
+        //       //           case ConnectionState.active:
+        //       //             return Text('${snapshot.data}');
+        //       //           default:
+        //       //             return Text(
+        //       //               snapshot.data ?? '',
+        //       //               style: Theme.of(context).textTheme.headline4,
+        //       //             );
+        //       //         }
+
+        //       //         // return Text(
+        //       //         //   '${snapshot.data}',
+        //       //         //   style: Theme.of(context).textTheme.headline4,
+        //       //         // );
+        //       //       }),
+        //       // ),
+        //     ],
+        //   ),
+        // ),
+
+        );
   }
 }
