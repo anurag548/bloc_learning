@@ -4,9 +4,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bloc/bloc.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'dart:math' as math show Random;
-
+import 'package:flutter_bloc_learning/order2.dart';
+import 'dart:developer' as devtools show log;
 import 'package:flutter_bloc_learning/orderList.dart';
+
+extension LogIT on Object {
+  void log() => devtools.log(toString());
+}
 
 enum URLs { ORDER_LIST, url2 }
 
@@ -42,42 +46,78 @@ Future<Iterable<OrderList>> getOrder(String url) => HttpClient()
     .getUrl(Uri.parse(url))
     .then((req) => req.close())
     .then((res) => res.transform(utf8.decoder).join())
-    .then((resstr) => jsonDecode(resstr) as List<dynamic>)
-    .then((list) => list.map((e) => OrderList.fromJson(e)));
+    .then((resstr) => orderFromJson(resstr))
+    .then((ordList) => ordList.orderList);
+
+Future<Iterable<Datum>> getOrder2(String url) => HttpClient()
+    .getUrl(Uri.parse(url))
+    .then((req) => req.close())
+    .then((res) => res.transform(utf8.decoder).join())
+    .then((resstr) => order2FromJson(resstr))
+    .then((ordList) => ordList.data);
+// .then((list) => list.map((e) => OrderList.fromJson(e)));
 
 @immutable
 class FetchResult {
-  final Iterable<OrderList> orderList;
+  final Iterable<OrderList>? orderList;
+  final Iterable<Datum>? order2;
   final bool isRetrivedFromCache;
   const FetchResult(
-      {required this.orderList, this.isRetrivedFromCache = false});
+      {this.orderList, required this.isRetrivedFromCache, this.order2});
 
   @override
   String toString() {
     // TODO: implement toString
-    return 'FetchResult{orderList: $orderList, isRetrivedFromCache: $isRetrivedFromCache}';
+    return 'FetchResult{orderList: $orderList, isRetrivedFromCache: $isRetrivedFromCache, order2: $order2}';
   }
 }
 
 class APIbloc extends Bloc<LoadAction, FetchResult?> {
   final Map<URLs, Iterable<OrderList>> _cache = {};
+  final Map<URLs, Iterable<Datum>> _cache2 = {};
   APIbloc() : super(null) {
     on<LoadURLsAction>((event, emit) async {
       final url = event.url;
-      if (_cache.containsKey(url)) {
-        final cachedOrders = _cache[url]!;
-        final result = FetchResult(
-          orderList: cachedOrders,
-          isRetrivedFromCache: true,
-        );
-        emit(result);
-      } else {
-        final res = await getOrder(url.urlString);
-        _cache[url] = res;
-        final result = FetchResult(
-          orderList: res,
-          isRetrivedFromCache: false,
-        );
+      if (event.url == URLs.ORDER_LIST) {
+        if (_cache.containsKey(url)) {
+          final cachedOrders = _cache[url]!;
+          final result = FetchResult(
+            orderList: cachedOrders,
+            isRetrivedFromCache: true,
+          );
+          result.log();
+          emit(result);
+        } else {
+          final res = await getOrder(url.urlString);
+          _cache[url] = res;
+          final result = FetchResult(
+            orderList: res,
+            isRetrivedFromCache: false,
+          );
+          result.log();
+        }
+      }
+      if (event.url == URLs.url2) {
+        if (_cache.containsKey(url)) {
+          final cachedOrders = _cache[url]!;
+          final result = FetchResult(
+            orderList: cachedOrders,
+            isRetrivedFromCache: true,
+          );
+          result.log();
+
+          emit(result);
+        } else {
+          final res = await getOrder2(url.urlString);
+          devtools.log(res.toString());
+          _cache2[url] = res;
+          final result = FetchResult(
+            // orderList: res,
+            order2: res,
+            isRetrivedFromCache: false,
+          );
+          result.log();
+        }
       }
     });
   }
@@ -152,36 +192,50 @@ class _MyHomePageState extends State<MyHomePage> {
                         .read<APIbloc>()
                         .add(LoadURLsAction(url: URLs.ORDER_LIST));
                   },
-                  child: Text('Load link 1 '),
+                  child: const Text('Load link 1'),
                 ),
                 TextButton(
                   onPressed: () {
-                    context
-                        .read<APIbloc>()
-                        .add(LoadURLsAction(url: URLs.ORDER_LIST));
+                    context.read<APIbloc>().add(LoadURLsAction(url: URLs.url2));
                   },
-                  child: Text('Load link 1 '),
+                  child: const Text('Load link 2'),
                 ),
               ],
             ),
             BlocBuilder<APIbloc, FetchResult?>(buildWhen: (previous, current) {
-              return previous?.orderList != current?.orderList;
+              return previous != current;
             }, builder: (context, state) {
               final res = state?.orderList;
-              if (res == null) {
-                return SizedBox();
+              final res2 = state?.order2;
+
+              if (res != null) {
+                print('insdie res condition');
+                return Expanded(
+                  child: ListView.builder(
+                    itemCount: res.length,
+                    itemBuilder: (context, index) {
+                      final orders = res[index];
+                      return ListTile(
+                        title: Text(orders!.orderNumber),
+                      );
+                    },
+                  ),
+                );
+              } else if (res2 != null) {
+                print('insdie res2 condition');
+                return Expanded(
+                  child: ListView.builder(
+                    itemCount: res2.length,
+                    itemBuilder: (context, index) {
+                      final orders = res2[index];
+                      return ListTile(
+                        title: Text(orders!.name),
+                      );
+                    },
+                  ),
+                );
               }
-              return Expanded(
-                child: ListView.builder(
-                  itemCount: res.length,
-                  itemBuilder: (context, index) {
-                    final orders = res[index];
-                    return ListTile(
-                      title: Text(orders!.orderNumber),
-                    );
-                  },
-                ),
-              );
+              return SizedBox();
             })
           ],
         )
